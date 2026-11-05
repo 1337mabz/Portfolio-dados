@@ -1,0 +1,5 @@
+
+# dados brutos (não versionar)
+data/
+*.duckdb
+.env
