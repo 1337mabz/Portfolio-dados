@@ -112,3 +112,75 @@ ORDER BY mes;
 --   AND order_purchase_timestamp <  '2019-01-01'
 -- GROUP BY mes
 -- ORDER BY mes;
+
+-- ============================================================
+-- EXTRA — % DO TOTAL (window function)
+-- ============================================================
+-- Ideia: pct = total do grupo / total geral * 100
+-- O OVER () enxerga o resultado inteiro, não só o grupo.
+--
+--   sum(payment_value)             -> total do grupo
+--   sum(sum(payment_value)) OVER () -> total geral
+--
+SELECT payment_type,
+       round(sum(payment_value), 2) AS total,
+       round(100.0 * sum(payment_value) / sum(sum(payment_value)) OVER (), 2) AS pct
+FROM payments
+GROUP BY payment_type
+ORDER BY total DESC;
+
+-- Alternativa sem window function: CTE + subquery
+WITH por_tipo AS (
+    SELECT payment_type, sum(payment_value) AS total
+    FROM payments
+    GROUP BY payment_type
+)
+SELECT payment_type,
+       round(total, 2) AS total,
+       round(100.0 * total / (SELECT sum(total) FROM por_tipo), 2) AS pct
+FROM por_tipo
+ORDER BY total DESC;
+
+-- ============================================================
+-- EXTRA — QUALIFY e ranking
+-- ============================================================
+-- QUALIFY filtra o resultado de uma window function
+-- (como o HAVING filtra o resultado do GROUP BY).
+
+-- Top 10 categorias por quantidade, sem LIMIT
+SELECT product_category_name,
+       count(*) AS produtos,
+       round(100.0 * count(*) / sum(count(*)) OVER (), 2) AS pct
+FROM products
+WHERE product_category_name IS NOT NULL
+GROUP BY 1
+QUALIFY row_number() OVER (ORDER BY count(*) DESC) <= 10
+ORDER BY produtos DESC;
+
+-- row_number x rank x dense_rank (com valores 10, 10, 8, 5):
+--   row_number -> 1, 2, 3, 4   (nunca empata)
+--   rank       -> 1, 1, 3, 4   (empata e pula)
+--   dense_rank -> 1, 1, 2, 3   (empata sem pular)
+
+-- Top 1 por estado (padrão "top N por grupo")
+SELECT customer_state,
+       count(*) AS clientes
+FROM customers
+GROUP BY customer_state
+QUALIFY row_number() OVER (ORDER BY count(*) DESC) = 1
+ORDER BY clientes DESC;
+
+-- ============================================================
+-- ORDEM DE EXECUÇÃO DE UMA QUERY
+-- ============================================================
+-- FROM -> WHERE -> GROUP BY -> HAVING -> WINDOW -> QUALIFY
+--      -> SELECT -> ORDER BY -> LIMIT
+
+-- ============================================================
+-- ATALHOS DO DUCKDB
+-- ============================================================
+-- GROUP BY ALL      agrupa por todas as colunas não agregadas
+-- GROUP BY 1        agrupa pela posição da coluna no SELECT
+-- ORDER BY 2        ordena pela posição da coluna no SELECT
+-- SUMMARIZE tabela  perfil completo (min, max, média, quartis, nulos)
+-- SELECT * EXCLUDE (col)  tudo menos a coluna
